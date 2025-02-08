@@ -68,11 +68,43 @@ class Individual_Grid(object):
         # STUDENT also consider weighting the different tile types so it's not uniformly random
         # STUDENT consider putting more constraints on this to prevent pipes in the air, etc
 
+        #left = 1
+        #right = width - 1
+        #for y in range(height):
+            #for x in range(left, right):
+                #pass
+        #return genome
+        if random.random() > 0.4:
+            return genome
         left = 1
         right = width - 1
-        for y in range(height):
-            for x in range(left, right):
-                pass
+
+        #diff mutation type
+        mutation_type = random.random()
+
+        if mutation_type < 0.4:
+            changes = random.randomint(1,3)
+            for _ in range(changes):
+                x = random.randint(left, right-1)
+                y = random.randint(0, height-2)
+
+                weights = [0.55, 0.15, 0.1, 0.05, 0.05, 0.05, 0.025, 0.025]  
+                genome[x][y] = random.choices(options, weights=weights)[0]
+        elif mutation_type < 0.7:
+            #we create platform for random length 
+            platform_x = random.randint(left+1, right-5)
+            platform_y = random.randint(5, height-5)
+            platform_len = random.randint(3,8)
+
+            for x in range(platform_x, min(platform_x + platform_len, right)):
+                genome[platform_y][x] = "X"
+        else: 
+            #we create a gap
+            gap_x = random.randint(left+5, right-5)
+            gap_width = random.randint(2,4)
+            for x in range(gap_x, min(gap_x + gap_width, right)):
+                genome[height-1][x] = '-'
+        
         return genome
 
     # Create zero or more children from self and other
@@ -80,14 +112,55 @@ class Individual_Grid(object):
         new_genome = copy.deepcopy(self.genome)
         # Leaving first and last columns alone...
         # do crossover with other
-        left = 1
-        right = width - 1
-        for y in range(height):
-            for x in range(left, right):
+        #left = 1
+        #right = width - 1
+        #for y in range(height):
+            #for x in range(left, right):
                 # STUDENT Which one should you take?  Self, or other?  Why?
                 # STUDENT consider putting more constraints on this to prevent pipes in the air, etc
-                pass
+                #pass
         # do mutation; note we're returning a one-element tuple here
+
+        #starting my implementation
+        #find 2-3 points
+        points = sorted(random.sample(range(1,width-1), random.randint(2,3)))
+
+        #then we track the parent we're taking from
+        using_self = True
+        current_x = 1
+
+        #go though crossover points
+        for point in points:
+            if using_self:
+                for y in range(height):
+                    for x in range(current_x, point):
+                        new_genome[y][x] = self.genome[y][x]
+            else:
+                #take from the other
+                for y in range(height):
+                    for x in range(current_x, point):
+                        new_genome[y][x] = other.genome[y][x]
+            using_self = not using_self
+            current_x = point
+
+            #we fill in the rest 
+            for y in range(height):
+                for x in range(current_x, width-1):
+                    new_genome[y][x] = other.genome[y][x] if using_self else self.genome[y][x]
+
+            for y in range(height):
+                for x in range(1, width-2):
+                    if new_genome[y][x] == "T":
+                        new_genome[y][x+1] = "T"
+                    elif new_genome[y][x] == "|":
+                        new_genome[y][x+1] = "|"
+            #cleanup
+            for x in range(1, width-1):
+                for y in range(height-2, -1, -1):
+                    if new_genome[y][x] in ["|", "T"]:
+                        if y < height-1 and new_genome[y+1][x] not in ["|", "X"]:
+                            new_genome[y][x] = "-"
+        
         return (Individual_Grid(new_genome),)
 
     # Turn the genome into a level string (easy for this genome)
@@ -271,7 +344,32 @@ class Individual_DE(object):
         gb = b_part + a_part
         # do mutation
         return Individual_DE(self.mutate(ga)), Individual_DE(self.mutate(gb))
+    
+    #i added this new function 
+    def generate_sucessors(population):
+        results = []
 
+        #keep the best 
+        sorted_pop = sorted(population, key=lambda x : x.fitness(), reverse = True)
+        elite_count = len(population)//10
+        results.extend(sorted_pop[:elite_count])
+
+        #selection for the rest of the population 
+        while len(results) < len(population):
+            tournament_size = 5
+            parent1 = max(random.sample(population, tournament_size), key=lambda x: x.fitness())
+            parent2 = max(random.sample(population, tournament_size), key=lambda x: x.fitness())
+
+            #then we generate children through the crossover
+            children = parent1.generate_children(parent2)
+            results.extend(children)
+
+            #if we have too many, indice
+            if len(results) > len(population):
+                results = results[:len(population)]
+            
+        return results
+ 
     # Apply the DEs to a base level.
     def to_level(self):
         if self._level is None:
