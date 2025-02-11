@@ -38,87 +38,278 @@ class Individual_Grid(object):
 
     # Update this individual's estimate of its fitness.
     # This can be expensive so we do it once and then cache the result.
-    def calculate_fitness(self):
-        measurements = metrics.metrics(self.to_level())
-        # Print out the possible measurements or look at the implementation of metrics.py for other keys:
-        # print(measurements.keys())
-        # Default fitness function: Just some arbitrary combination of a few criteria.  Is it good?  Who knows?
-        # STUDENT Modify this, and possibly add more metrics.  You can replace this with whatever code you like.
-        coefficients = dict(
-            meaningfulJumpVariance=0.5,
-            negativeSpace=0.6,
-            pathPercentage=0.5,
-            emptyPercentage=0.6,
-            linearity=-0.5,
-            solvability=2.0
-        )
-        self._fitness = sum(map(lambda m: coefficients[m] * measurements[m],
-                                coefficients))
-        return self
+
+def calculate_fitness(self):
+    # my implementation
+    # get various measurements of the level using the metrics module
+    measurements = metrics.metrics(self.to_level())
+
+    # define weight coefficients for different metrics to calculate fitness
+    coefficients = dict(
+        meaningfulJumpVariance=0.5,  # encourages varied jump challenges
+        negativeSpace=0.6,  # penalizes large unused areas
+        pathPercentage=0.5,  # rewards levels with clear paths
+        emptyPercentage=0.6,  # penalizes too much empty space
+        linearity=-0.5,  # penalizes overly linear levels
+        solvability=2.0  # strongly rewards solvable levels
+    )
+
+    # calculate base fitness as a weighted sum of the metrics
+    self._fitness = sum(map(lambda m: coefficients[m] * measurements[m], coefficients))
+
+    # convert the level to a grid representation
+    level = self.to_level()
+
+    # penalize levels with too many enemies clustered together
+    enemy_cluster_penalty = 0  
+    for y in range(height):
+        enemy_count = 0  # tracks consecutive enemy tiles
+        for x in range(width):
+            if level[y][x] == 'E':  # check if current tile is an enemy
+                enemy_count += 1
+                if enemy_count > 2:  # more than 2 enemies in a row is bad
+                    enemy_cluster_penalty -= 0.5
+            else: 
+                enemy_count = 0  # reset count when no enemy is found
+
+    # reward levels with reachable reward blocks (coins, mushrooms, power-ups)
+    reward_bonus = 0  
+    for y in range(height - 1):  # avoid checking out of bounds
+        for x in range(1, width-1):  # avoid checking first/last columns
+            if level[y][x] in ['?', 'M', 'o']:  # check if tile is a reward
+                has_platform = False  # flag to check if it's reachable
+                for check_y in range(y+1, min(y+4, height)):  # look below
+                    if level[check_y][x] in ['X', 'B', '?', 'M']:  # solid ground
+                        has_platform = True
+                        break 
+                if has_platform:
+                    reward_bonus += 0.2  # add bonus if reachable
+
+    # penalize levels with large empty spaces
+    empty_space_penalty = 0  
+    for y in range(2, height-2):  # avoid checking top/bottom rows
+        empty_count = 0  # track consecutive empty tiles
+        for x in range(1, width-1):
+            if level[y][x] == '-' and level[y+1][x] == '-':  # check empty space
+                empty_count += 1
+                if empty_count > 8:  # too large empty space
+                    empty_space_penalty -= 0.3
+            else:
+                empty_count = 0  # reset count when encountering a solid tile
+    
+    # apply penalties and bonuses to the fitness score
+    self._fitness += enemy_cluster_penalty + reward_bonus + empty_space_penalty
+    
+    return self  # return the modified object
+
 
     # Return the cached fitness value or calculate it as needed.
-    def fitness(self):
-        if self._fitness is None:
-            self.calculate_fitness()
-        return self._fitness
+def fitness(self):
+    if self._fitness is None:
+        self.calculate_fitness()
+    return self._fitness
 
-    # Mutate a genome into a new genome.  Note that this is a _genome_, not an individual!
-    def mutate(self, genome):
-        # STUDENT implement a mutation operator, also consider not mutating this individual
-        # STUDENT also consider weighting the different tile types so it's not uniformly random
-        # STUDENT consider putting more constraints on this to prevent pipes in the air, etc
+    # Mutate a genome into a new genome. note that this is a _genome_, not an individual!
+def mutate(self, genome):
+    # STUDENT implement a mutation operator, also consider not mutating this individual
+    # STUDENT also consider weighting the different tile types so it's not uniformly random
+    # STUDENT consider putting more constraints on this to prevent pipes in the air, etc
 
-        left = 1
-        right = width - 1
-        for y in range(height):
-            for x in range(left, right):
-                pass
+    if random.random() > 0.4:
         return genome
 
+    left = 1
+    right = width - 1
+
+    # diff mutation type
+    mutation_type = random.random()
+
+    if mutation_type < 0.4:
+        changes = random.randint(1, 3)
+        for _ in range(changes):
+            x = random.randint(left, right - 1)
+            y = random.randint(0, height - 2)
+
+            weights = [0.55, 0.15, 0.1, 0.05, 0.05, 0.05, 0.025, 0.025]  
+            genome[x][y] = random.choices(options, weights=weights)[0]
+
+    elif mutation_type < 0.7:
+        # we create platform for random length 
+        platform_x = random.randint(left + 1, right - 5)
+        platform_y = random.randint(5, height - 5)
+        platform_len = random.randint(3, 8)
+
+        for x in range(platform_x, min(platform_x + platform_len, right)):
+            genome[platform_y][x] = "X"
+
+    else: 
+        # we create a gap
+        gap_x = random.randint(left + 5, right - 5)
+        gap_width = random.randint(2, 4)
+        for x in range(gap_x, min(gap_x + gap_width, right)):
+            genome[height - 1][x] = '-'
+
+    return genome
+
     # Create zero or more children from self and other
-    def generate_children(self, other):
-        new_genome = copy.deepcopy(self.genome)
-        # Leaving first and last columns alone...
-        # do crossover with other
-        left = 1
-        right = width - 1
-        for y in range(height):
-            for x in range(left, right):
-                # STUDENT Which one should you take?  Self, or other?  Why?
-                # STUDENT consider putting more constraints on this to prevent pipes in the air, etc
-                pass
-        # do mutation; note we're returning a one-element tuple here
-        return (Individual_Grid(new_genome),)
+def generate_children(self, other):
+    new_genome = copy.deepcopy(self.genome)
+
+    # starting my implementation
+    # find 2-3 points
+    points = sorted(random.sample(range(1, width - 1), random.randint(2, 3)))
+
+    # then we track the parent we're taking from
+    using_self = True
+    current_x = 1
+
+    # go through crossover points
+    for point in points:
+        if using_self:
+            for y in range(height):
+                for x in range(current_x, point):
+                    new_genome[y][x] = self.genome[y][x]
+        else:
+            # take from the other
+            for y in range(height):
+                for x in range(current_x, point):
+                    new_genome[y][x] = other.genome[y][x]
+
+        using_self = not using_self
+        current_x = point
+
+    # we fill in the rest 
+    for y in range(height):
+        for x in range(current_x, width - 1):
+            new_genome[y][x] = other.genome[y][x] if using_self else self.genome[y][x]
+
+    # ensure pipes extend properly
+    for y in range(height):
+        for x in range(1, width - 2):
+            if new_genome[y][x] == "T":
+                new_genome[y][x + 1] = "T"
+            elif new_genome[y][x] == "|":
+                new_genome[y][x + 1] = "|"
+
+    # cleanup
+    for x in range(1, width - 1):
+        for y in range(height - 2, -1, -1):
+            if new_genome[y][x] in ["|", "T"]:
+                if y < height - 1 and new_genome[y + 1][x] not in ["|", "X"]:
+                    new_genome[y][x] = "-"
+
+    return (Individual_Grid(new_genome),)
+
 
     # Turn the genome into a level string (easy for this genome)
-    def to_level(self):
-        return self.genome
+def to_level(self):
+    return self.genome
 
     # These both start with every floor tile filled with Xs
     # STUDENT Feel free to change these
-    @classmethod
-    def empty_individual(cls):
-        g = [["-" for col in range(width)] for row in range(height)]
-        g[15][:] = ["X"] * width
-        g[14][0] = "m"
-        g[7][-1] = "v"
-        for col in range(8, 14):
-            g[col][-1] = "f"
-        for col in range(14, 16):
-            g[col][-1] = "X"
-        return cls(g)
+@classmethod
+def empty_individual(cls):
+    #myimplementation
+    #create an empty grid filled with "-" (empty spaces)
+    g = [["-" for col in range(width)] for row in range(height)]
+    
+    #set the ground level with "X" blocks at row 15
+    g[15][:] = ["X"] * width
 
-    @classmethod
-    def random_individual(cls):
-        # STUDENT consider putting more constraints on this to prevent pipes in the air, etc
-        # STUDENT also consider weighting the different tile types so it's not uniformly random
-        g = [random.choices(options, k=width) for row in range(height)]
-        g[15][:] = ["X"] * width
-        g[14][0] = "m"
-        g[7][-1] = "v"
-        g[8:14][-1] = ["f"] * 6
-        g[14:16][-1] = ["X", "X"]
-        return cls(g)
+    #place mario ("m") at the starting position
+    g[14][0] = "m"
+
+    #place the goal ("v") at the top of the last column
+    g[7][-1] = "v"
+
+    #add flagpole ("f") below the goal
+    for col in range(8, 14):
+        g[col][-1] = "f"
+
+    #add base ("X") for the flagpole
+    for col in range(14, 16):
+        g[col][-1] = "X"
+
+    #add some basic platforms at random heights
+    for x in range(5, width-10, 12):  #place platforms at intervals
+        platform_y = random.randint(6, 10)  #choose a random row for the platform
+        platform_width = random.randint(3, 6)  #choose a random platform length
+        for w in range(platform_width):
+            if x + w < width-2:  #ensure platform stays within bounds
+                g[platform_y][x + w] = "X"  #place platform blocks
+    
+    return cls(g)  #return the generated level as an instance of the class
+
+@classmethod
+def random_individual(cls):
+    #my implementation
+    #create an empty grid filled with "-" (empty spaces)
+    g = [["-" for col in range(width)] for row in range(height)]
+    
+    #set the ground level with "X" blocks at row 15
+    g[15][:] = ["X"] * width
+    
+    #place mario ("m") at the starting position
+    g[14][0] = "m"
+    
+    #place the goal ("v") at the top of the last column
+    g[7][-1] = "v"
+    
+    #add flagpole ("f") below the goal
+    for col in range(8, 14):
+        g[col][-1] = "f"
+    
+    #add base ("X") for the flagpole
+    for col in range(14, 16):
+        g[col][-1] = "X"
+    
+    #define possible tile types and their selection probabilities
+    tiles = ["-", "X", "?", "M", "B", "o", "|", "T", "E"]
+    weights = [0.60, 0.15, 0.05, 0.02, 0.05, 0.05, 0.03, 0.03, 0.02]
+    
+    #randomly generate elements for the level
+    for y in range(4, 15):  #leave space at the top for jumping
+        platform_mode = False  #flag for continuous platform generation
+        platform_length = 0  #how long a platform will extend
+        
+        for x in range(1, width-1):  #avoid modifying the first and last columns
+            if not platform_mode:
+                if random.random() < 0.1:  #10% chance to start a platform
+                    platform_mode = True
+                    platform_length = random.randint(3, 8)  #set platform length
+                    platform_type = random.choice(["X", "B"])  # choose block type
+                    g[y][x] = platform_type  #place first block
+                    platform_length -= 1
+                else:
+                    #randomly place other tiles with a 20% chance
+                    if random.random() < 0.2:
+                        g[y][x] = random.choices(tiles, weights=weights)[0]
+            else:
+                # continue the platform until the length is reached
+                g[y][x] = platform_type
+                platform_length -= 1
+                if platform_length <= 0:
+                    platform_mode = False  # stop platform generation
+    
+    # ensure pipes ("T" for top, "|" for body) are valid
+    for y in range(height):
+        for x in range(width-1):  # avoid checking the last column
+            if g[y][x] == "T":  # if top pipe is found
+                g[y][x+1] = "T"  # extend pipe horizontally
+                if y < height-1:  # make sure there's room for the pipe body
+                    g[y+1][x] = "|"
+                    g[y+1][x+1] = "|"
+            elif g[y][x] == "|":  # if pipe body is found, extend it
+                g[y][x+1] = "|"
+    
+    # randomly add gaps in the ground for obstacles
+    for x in range(10, width-10, random.randint(8, 16)):
+        gap_width = random.randint(2, 4)  # set random gap size
+        for w in range(gap_width):
+            if x + w < width-2:  # ensure gap stays within bounds
+                g[15][x + w] = "-"
+    
+    return cls(g)  
 
 
 def offset_by_upto(val, variance, min=None, max=None):
@@ -158,12 +349,14 @@ class Individual_DE(object):
         # STUDENT Add more metrics?
         # STUDENT Improve this with any code you like
         coefficients = dict(
-            meaningfulJumpVariance=0.5,
-            negativeSpace=0.6,
-            pathPercentage=0.5,
+            meaningfulJumpVariance=1.0,
+            negativeSpace=0.8,
+            pathPercentage=1.2,
             emptyPercentage=0.6,
-            linearity=-0.5,
-            solvability=2.0
+            linearity=-0.3,
+            solvability=4.0,
+            decorationPercentage= 0.3, #some decoration but not too much
+            leniency = 0.4 #moderate challenge level
         )
         penalties = 0
         # STUDENT For example, too many stairs are unaesthetic.  Let's penalize that
@@ -271,7 +464,32 @@ class Individual_DE(object):
         gb = b_part + a_part
         # do mutation
         return Individual_DE(self.mutate(ga)), Individual_DE(self.mutate(gb))
+    
+    #i added this new function 
+    def generate_sucessors(population):
+        results = []
 
+        #keep the best 
+        sorted_pop = sorted(population, key=lambda x : x.fitness(), reverse = True)
+        elite_count = len(population)//10
+        results.extend(sorted_pop[:elite_count])
+
+        #selection for the rest of the population 
+        while len(results) < len(population):
+            tournament_size = 5
+            parent1 = max(random.sample(population, tournament_size), key=lambda x: x.fitness())
+            parent2 = max(random.sample(population, tournament_size), key=lambda x: x.fitness())
+
+            #then we generate children through the crossover
+            children = parent1.generate_children(parent2)
+            results.extend(children)
+
+            #if we have too many, indice
+            if len(results) > len(population):
+                results = results[:len(population)]
+            
+        return results
+ 
     # Apply the DEs to a base level.
     def to_level(self):
         if self._level is None:
